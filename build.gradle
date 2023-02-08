@@ -1,0 +1,98 @@
+apply plugin: 'war'
+apply plugin: 'java'
+
+group = 'com.ibm.oracle.rac'
+version = '1.0'
+description = "Testing ground for oracle RAC applications"
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    jdbcDrivers { transitive = false; }
+}
+
+dependencies {
+    // Provided APIs supplied by WebSphere
+    implementation group: 'jakarta.platform',              name: 'jakarta.jakartaee-api',          version: '9.1.0'
+
+    //Compiletime dependencies
+    implementation group: 'javax.annotation',              name: 'javax.annotation-api',           version: '1.3'
+
+    // Drivers
+    jdbcDrivers group: 'com.oracle.database.jdbc.debug',    name: 'ojdbc8_g',                      version: '21.8.0.0'
+    jdbcDrivers group: 'com.oracle.database.jdbc',          name: 'ucp',                           version: '21.8.0.0'
+}
+
+// Create app
+war {
+    from('src/main/resources/WEB-INF') {
+        include '*'
+        into 'WEB-INF'
+    }
+    from('src/main/resources/webapp') {
+        include '*'
+        into '/'
+    }
+}
+
+// Copy app to test resources
+task copyAppToResources {
+    copy {
+       from war.archivePath
+       into 'src/main/liberty/config/apps/'
+       rename '.*.war', 'oracleRAC.war'
+    }
+}
+
+// Copy drivers to container
+task copyJDBCDrivers {
+    copy {
+        from configurations.jdbcDrivers
+        into new File('./src/main/liberty/config/lib/jdbc/')
+        rename 'ojdbc8_g.*.jar', 'ojdbc8_g.jar'
+        rename 'ucp.*.jar', 'ucp.jar'
+    }
+}
+
+//##### Liberty Specific tasks #####
+task runLiberty() {
+    doLast{
+        println "🎉  Services are up and running!!"
+        println "📝  Access Liberty admin console at endpoint:   https://localhost:9443/adminCenter/"
+        println "🧪  Test oracle datasource:                     http://localhost:9080/oracleRAC/jdbc/oracle"
+    }
+}
+
+//##### Docker Specific tasks #####
+task serviceLiberty(type: Exec) {
+    commandLine 'sh', '-c', 'docker-compose -f docker-compose.yml build && docker-compose -f docker-compose.yml up -d'
+}
+
+task stopLiberty(type: Exec) {
+    commandLine 'sh', '-c', 'docker-compose -f docker-compose.yml down'
+}
+
+task logsLiberty(type: Exec) {
+    commandLine 'sh', './scripts/runtime_extract_logs.sh', 'liberty', '/logs/'
+}
+
+//##### Oracle RAC setup tasks #####
+task pullOracleRACDockerFiles(type: Exec) {
+    commandLine 'sh', './scripts/git_sparce_checkout.sh', 'git@github.com:oracle/docker-images.git', "docker-images", System.getenv('HOME') + '/.tmp/', 'OracleDatabase', 'OracleDatabase/RAC/'
+}
+
+//##### Project Topology #####
+copyAppToResources.dependsOn 'build'
+
+serviceLiberty.dependsOn 'copyAppToResources'
+serviceLiberty.dependsOn 'copyJDBCDrivers'
+runLiberty.dependsOn 'serviceLiberty'
