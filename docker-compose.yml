@@ -1,0 +1,19 @@
+version: '3'
+services:
+  liberty:
+    build:
+      context: .
+      dockerfile: liberty.Dockerfile
+    container_name: liberty
+    ports:
+      - 9080:9080
+      - 9443:9443
+    links:
+      - oracle
+  oracle:
+    image: gvenzl/oracle-xe:21.3.0-full-faststart
+    container_name: oracle
+    environment: 
+      - ORACLE_PASSWORD=oracle
+    ports:
+      - 1521:1521
